@@ -6,7 +6,7 @@ import { Pitch, PitchDocument } from './pitch.schema';
 import { SavedIdea, SavedIdeaDocument } from './saved-idea.schema';
 import { AiService } from '../ai/ai.service';
 import { TrendScoringService } from '../trends/trend-scoring.service';
-import { RssCollectorService, CollectedTopic } from '../collectors/rss-collector.service';
+import { RssCollectorService } from '../collectors/rss-collector.service';
 
 @Injectable()
 export class TopicsService {
@@ -21,7 +21,7 @@ export class TopicsService {
     private readonly rssCollector: RssCollectorService,
   ) {}
 
-  async getTrending(limit = 10) {
+  async getTrending(limit = 10): Promise<any[]> {
     return this.topicModel
       .find({ status: { $in: [TopicStatus.PROCESSED, TopicStatus.HOT] } })
       .sort({ trendScore: -1, createdAt: -1 })
@@ -29,7 +29,7 @@ export class TopicsService {
       .lean();
   }
 
-  async getAll(page = 1, limit = 20, category?: string) {
+  async getAll(page = 1, limit = 20, category?: string): Promise<any> {
     const filter = category ? { category } : {};
     const [topics, total] = await Promise.all([
       this.topicModel
@@ -43,14 +43,14 @@ export class TopicsService {
     return { topics, total, page, limit };
   }
 
-  async getById(id: string) {
+  async getById(id: string): Promise<any> {
     const topic = await this.topicModel.findById(id).lean();
     if (!topic) throw new NotFoundException('Topic not found');
     const pitches = await this.pitchModel.find({ topicId: new Types.ObjectId(id) }).lean();
     return { ...topic, pitches };
   }
 
-  async getTodaysPitches() {
+  async getTodaysPitches(): Promise<any[]> {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
@@ -101,7 +101,7 @@ export class TopicsService {
     return savedPitches;
   }
 
-  async savePitch(userId: string, pitchId: string) {
+  async savePitch(userId: string, pitchId: string): Promise<any> {
     const pitch = await this.pitchModel.findById(pitchId);
     if (!pitch) throw new NotFoundException('Pitch not found');
 
@@ -122,20 +122,22 @@ export class TopicsService {
     return { message: 'Pitch saved' };
   }
 
-  async getSavedIdeas(userId: string) {
+  async getSavedIdeas(userId: string): Promise<any[]> {
     const saved = await this.savedIdeaModel
       .find({ userId: new Types.ObjectId(userId) })
       .sort({ createdAt: -1 })
       .lean();
 
-    return Promise.all(
+    const results = await Promise.all(
       saved.map(async (s) => {
         const pitch = await this.pitchModel.findById(s.pitchId).lean();
         if (!pitch) return null;
         const topic = await this.topicModel.findById(pitch.topicId).lean();
         return { ...s, pitch, topic };
       }),
-    ).then((results) => results.filter(Boolean));
+    );
+
+    return results.filter(Boolean);
   }
 
   async collectAndProcessTrends(): Promise<{ collected: number; hot: number }> {
@@ -197,7 +199,7 @@ export class TopicsService {
       .exec();
   }
 
-  async markNotificationSent(topicIds: string[]) {
+  async markNotificationSent(topicIds: string[]): Promise<void> {
     await this.topicModel.updateMany(
       { _id: { $in: topicIds.map((id) => new Types.ObjectId(id)) } },
       { notificationSent: true },
