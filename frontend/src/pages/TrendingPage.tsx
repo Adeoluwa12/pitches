@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { topicsApi } from '../services/api';
-import { TopicCard, LoadingSpinner, EmptyState, CategoryBadge } from '../components/ui';
+import { TopicCard, LoadingSpinner, EmptyState } from '../components/ui';
 
 const CATEGORIES = [
   { id: '', label: 'All' },
@@ -24,8 +24,9 @@ export default function TrendingPage() {
     queryFn: () => topicsApi.getAll({ page, category: category || undefined }),
   });
 
-  const topics = data?.topics || [];
-  const total = data?.total || 0;
+  // Backend returns { topics, total, page, limit }
+  const topics = Array.isArray(data) ? data : (data as any)?.topics || [];
+  const total = (data as any)?.total || 0;
   const totalPages = Math.ceil(total / 20);
 
   return (
@@ -35,7 +36,6 @@ export default function TrendingPage() {
         <p className="text-gray-500 text-sm">{total} topics collected</p>
       </div>
 
-      {/* Category filter */}
       <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1 -mx-4 px-4">
         {CATEGORIES.map((cat) => (
           <button
@@ -52,7 +52,6 @@ export default function TrendingPage() {
         ))}
       </div>
 
-      {/* Topics */}
       {isLoading ? (
         <LoadingSpinner text="Loading topics..." />
       ) : topics.length === 0 ? (
@@ -69,7 +68,6 @@ export default function TrendingPage() {
         </div>
       )}
 
-      {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between pt-2 pb-4">
           <button
@@ -79,9 +77,7 @@ export default function TrendingPage() {
           >
             ← Prev
           </button>
-          <span className="text-sm text-gray-500">
-            Page {page} of {totalPages}
-          </span>
+          <span className="text-sm text-gray-500">Page {page} of {totalPages}</span>
           <button
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page === totalPages || isFetching}
