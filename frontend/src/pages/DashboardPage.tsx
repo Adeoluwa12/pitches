@@ -18,15 +18,19 @@ export default function DashboardPage() {
   const { data: trending, isLoading } = useQuery({
     queryKey: ['trending', 6],
     queryFn: () => topicsApi.getTrending(6),
-    refetchInterval: 1000 * 60 * 10, // refresh every 10 min
+    refetchInterval: 1000 * 60 * 10,
   });
 
-  const hotTopics = (trending || []).filter((t: any) => t.trendScore >= 70);
-  const otherTopics = (trending || []).filter((t: any) => t.trendScore < 70);
+  // Defensive — handle both array response and object with topics key
+  const topicsArray = Array.isArray(trending)
+    ? trending
+    : (trending as any)?.topics || [];
+
+  const hotTopics = topicsArray.filter((t: any) => t.trendScore >= 70);
+  const otherTopics = topicsArray.filter((t: any) => t.trendScore < 70);
 
   return (
     <div className="page-container pt-4 space-y-6">
-      {/* Greeting */}
       <div className="space-y-1">
         <h2 className="text-2xl font-bold text-navy">
           {getGreeting()}, {user?.name?.split(' ')[0]} 👋
@@ -34,7 +38,6 @@ export default function DashboardPage() {
         <p className="text-gray-500 text-sm">Here are today's article opportunities</p>
       </div>
 
-      {/* Quick actions */}
       <div className="grid grid-cols-2 gap-3">
         <button
           onClick={() => navigate('/morning-brief')}
@@ -55,7 +58,6 @@ export default function DashboardPage() {
         </button>
       </div>
 
-      {/* Hot topics */}
       {isLoading ? (
         <LoadingSpinner text="Fetching trends..." />
       ) : (
@@ -94,7 +96,7 @@ export default function DashboardPage() {
             </section>
           )}
 
-          {!trending?.length && (
+          {topicsArray.length === 0 && (
             <EmptyState
               icon="📡"
               title="No trends yet"
