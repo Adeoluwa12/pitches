@@ -13,16 +13,12 @@ export interface CollectedTopic {
   mentionCount: number;
 }
 
+// Linda Ikeji and Pulse Nigeria RSS URLs were 404ing — replaced with working ones
 const RSS_SOURCES = [
   {
-    name: 'Linda Ikeji Blog',
-    url: 'https://www.lindaikejisblog.com/feeds/posts/default?alt=rss',
+    name: 'BellaNaija',
+    url: 'https://www.bellanaija.com/feed/',
     category: TopicCategory.CELEBRITY,
-  },
-  {
-    name: 'Pulse Nigeria',
-    url: 'https://www.pulse.ng/rss',
-    category: TopicCategory.POP_CULTURE,
   },
   {
     name: 'Notjustok',
@@ -35,14 +31,29 @@ const RSS_SOURCES = [
     category: TopicCategory.NOLLYWOOD,
   },
   {
-    name: 'BellaNaija',
-    url: 'https://www.bellanaija.com/feed/',
+    name: 'TooXclusive',
+    url: 'https://tooxclusive.com/feed/',
+    category: TopicCategory.AFROBEATS,
+  },
+  {
+    name: 'Information Nigeria',
+    url: 'https://www.informationng.com/feed',
     category: TopicCategory.CELEBRITY,
   },
   {
-    name: 'The NET Nigeria',
-    url: 'https://thenet.ng/feed/',
+    name: 'Naijaloaded',
+    url: 'https://www.naijaloaded.com.ng/feed',
     category: TopicCategory.POP_CULTURE,
+  },
+  {
+    name: 'Thedistin',
+    url: 'https://www.thedistin.com/feed/',
+    category: TopicCategory.CELEBRITY,
+  },
+  {
+    name: 'SDK Blog',
+    url: 'https://www.sdk.blog/feed/',
+    category: TopicCategory.CELEBRITY,
   },
 ];
 
@@ -65,6 +76,7 @@ export class RssCollectorService {
       }),
     );
 
+    this.logger.log(`Total collected across all sources: ${results.length}`);
     return results;
   }
 
@@ -74,14 +86,14 @@ export class RssCollectorService {
     category: TopicCategory,
   ): Promise<CollectedTopic[]> {
     const response = await axios.get(url, {
-      timeout: 10000,
+      timeout: 12000,
       headers: {
-        'User-Agent': 'EntertainmentPitchAssistant/1.0',
+        'User-Agent': 'Mozilla/5.0 (compatible; EntertainmentPitchBot/1.0)',
+        'Accept': 'application/rss+xml, application/xml, text/xml, */*',
       },
     });
 
-    const xml = response.data as string;
-    return this.parseRss(xml, sourceName, category);
+    return this.parseRss(response.data as string, sourceName, category);
   }
 
   private parseRss(xml: string, sourceName: string, category: TopicCategory): CollectedTopic[] {
@@ -115,25 +127,31 @@ export class RssCollectorService {
       }
     }
 
-    return items.slice(0, 10); // max 10 per source
+    return items.slice(0, 10);
   }
 
   private extractTag(xml: string, tag: string): string {
-    const match = xml.match(new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>|<${tag}[^>]*>([^<]*)<\\/${tag}>`));
+    const match = xml.match(
+      new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>|<${tag}[^>]*>([^<]*)<\\/${tag}>`),
+    );
     return match ? (match[1] || match[2] || '').trim() : '';
   }
 
   private extractDescription(xml: string): string {
-    return this.extractTag(xml, 'description') || this.extractTag(xml, 'content:encoded') || '';
+    return (
+      this.extractTag(xml, 'description') ||
+      this.extractTag(xml, 'content:encoded') ||
+      ''
+    );
   }
 
   private extractImage(xml: string): string | undefined {
-    const mediaMatch = xml.match(/media:content[^>]+url="([^"]+)"/);
-    if (mediaMatch) return mediaMatch[1];
-    const enclosureMatch = xml.match(/enclosure[^>]+url="([^"]+)"/);
-    if (enclosureMatch) return enclosureMatch[1];
-    const imgMatch = xml.match(/<img[^>]+src="([^"]+)"/);
-    if (imgMatch) return imgMatch[1];
+    const media = xml.match(/media:content[^>]+url="([^"]+)"/);
+    if (media) return media[1];
+    const enclosure = xml.match(/enclosure[^>]+url="([^"]+)"/);
+    if (enclosure) return enclosure[1];
+    const img = xml.match(/<img[^>]+src="([^"]+)"/);
+    if (img) return img[1];
     return undefined;
   }
 
@@ -146,6 +164,7 @@ export class RssCollectorService {
       .replace(/&quot;/g, '"')
       .replace(/&#39;/g, "'")
       .replace(/&nbsp;/g, ' ')
+      .replace(/\s+/g, ' ')
       .trim();
   }
 }

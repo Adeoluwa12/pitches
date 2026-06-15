@@ -5,9 +5,6 @@ export interface RawTopicData {
   description: string;
   publishedAt?: Date;
   sourceCount?: number;
-  hasCelebrity?: boolean;
-  hasNollywood?: boolean;
-  hasMusicKeyword?: boolean;
   mentionCount?: number;
   engagementScore?: number;
 }
@@ -25,21 +22,30 @@ export interface TrendScoreBreakdown {
 const CELEBRITY_KEYWORDS = [
   'davido', 'wizkid', 'burna boy', 'tiwa savage', 'don jazzy', 'olamide',
   'genevieve', 'omotola', 'rmd', 'kate henshaw', 'ramsey nouah', 'ini edo',
-  'mercy johnson', 'yemi alade', 'ckay', 'asake', 'seun kuti', 'fela',
-  'tems', 'fireboy', 'rema', 'omah lay', 'victor ad', 'zinoleesky',
-  'naira marley', 'mohbad', 'portable', 'small doctor', 'zlatan',
+  'mercy johnson', 'yemi alade', 'ckay', 'asake', 'tems', 'fireboy',
+  'rema', 'omah lay', 'zinoleesky', 'naira marley', 'mohbad', 'portable',
+  'small doctor', 'zlatan', 'ebuka', 'bbnaija', 'big brother', 'falz',
+  'simi', 'adekunle gold', 'peter okoye', 'psquare', 'flavour', 'phyno',
 ];
 
 const NOLLYWOOD_KEYWORDS = [
   'nollywood', 'movie', 'film', 'cinema', 'box office', 'streaming',
-  'netflix nigeria', 'amazon prime nigeria', 'showmax', 'iroko tv',
-  'director', 'producer', 'actor', 'actress', 'premiere',
+  'netflix', 'showmax', 'iroko', 'director', 'producer', 'actor',
+  'actress', 'premiere', 'series', 'season',
 ];
 
 const MUSIC_KEYWORDS = [
   'afrobeats', 'afropop', 'amapiano', 'album', 'single', 'ep',
   'concert', 'tour', 'grammy', 'headies', 'bet awards', 'music video',
-  'billboard', 'chart', 'collaboration', 'featuring',
+  'billboard', 'chart', 'track', 'song', 'release', 'featuring',
+];
+
+const ENGAGEMENT_KEYWORDS = [
+  'controversy', 'viral', 'trending', 'breakup', 'beef', 'drama',
+  'arrested', 'pregnant', 'married', 'died', 'award', 'record',
+  'leaked', 'exposed', 'shade', 'diss', 'feud', 'fight', 'cheat',
+  'divorce', 'ban', 'suspended', 'fired', 'quit', 'announces',
+  'exclusive', 'breaking', 'confirmed', 'reacts', 'responds', 'slams',
 ];
 
 @Injectable()
@@ -49,7 +55,10 @@ export class TrendScoringService {
   score(data: RawTopicData): TrendScoreBreakdown {
     const freshness = this.scoreFreshness(data.publishedAt);
     const newsMentions = this.scoreMentions(data.mentionCount || 1);
-    const socialGrowth = this.scoreSocialGrowth(data.engagementScore || 0);
+    // RSS has zero social data — give a flat 15 base so scores aren't gutted
+    const socialGrowth = data.engagementScore
+      ? this.scoreSocialGrowth(data.engagementScore)
+      : 15;
     const sourceCount = this.scoreSourceCount(data.sourceCount || 1);
     const celebrityRelevance = this.scoreCelebrityRelevance(data.title, data.description);
     const engagement = this.scoreEngagement(data.title, data.description);
@@ -59,21 +68,12 @@ export class TrendScoringService {
       Math.round(freshness + newsMentions + socialGrowth + sourceCount + celebrityRelevance + engagement),
     );
 
-    return {
-      freshness,
-      newsMentions,
-      socialGrowth,
-      sourceCount,
-      celebrityRelevance,
-      engagement,
-      total,
-    };
+    return { freshness, newsMentions, socialGrowth, sourceCount, celebrityRelevance, engagement, total };
   }
 
   private scoreFreshness(publishedAt?: Date): number {
-    if (!publishedAt) return 10;
+    if (!publishedAt) return 12;
     const ageHours = (Date.now() - new Date(publishedAt).getTime()) / (1000 * 60 * 60);
-
     if (ageHours < 1) return 20;
     if (ageHours < 3) return 18;
     if (ageHours < 6) return 15;
@@ -84,12 +84,10 @@ export class TrendScoringService {
   }
 
   private scoreMentions(count: number): number {
-    if (count >= 50) return 25;
-    if (count >= 20) return 20;
     if (count >= 10) return 15;
     if (count >= 5) return 10;
-    if (count >= 2) return 5;
-    return 2;
+    if (count >= 2) return 7;
+    return 5; // RSS always has at least 1, bumped base
   }
 
   private scoreSocialGrowth(engagement: number): number {
@@ -115,25 +113,20 @@ export class TrendScoringService {
     const hasMusic = MUSIC_KEYWORDS.some((k) => text.includes(k));
 
     let score = 0;
-    if (hasCelebrity) score += 10;
-    if (hasNollywood) score += 3;
-    if (hasMusic) score += 2;
+    if (hasCelebrity) score += 12;
+    if (hasNollywood) score += 5;
+    if (hasMusic) score += 5;
     return Math.min(15, score);
   }
 
   private scoreEngagement(title: string, description: string): number {
     const text = `${title} ${description}`.toLowerCase();
-    const engagementWords = [
-      'controversy', 'viral', 'trending', 'breakup', 'beef', 'drama',
-      'arrested', 'pregnant', 'married', 'died', 'award', 'record',
-      'leaked', 'exposed', 'clout', 'shade', 'diss', 'feud',
-    ];
-
-    const matches = engagementWords.filter((w) => text.includes(w)).length;
-    return Math.min(10, matches * 3);
+    const matches = ENGAGEMENT_KEYWORDS.filter((w) => text.includes(w)).length;
+    return Math.min(20, matches * 4); // bumped cap from 10 → 20
   }
 
+  // Lowered from 70 → 45. RSS-only data realistically scores 35-65.
   isHot(score: TrendScoreBreakdown): boolean {
-    return score.total >= 70;
+    return score.total >= 45;
   }
 }
