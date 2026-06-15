@@ -44,6 +44,12 @@ export class TopicsController {
 export class PitchesController {
   constructor(private readonly topicsService: TopicsService) {}
 
+  // saved MUST come before :id — otherwise NestJS treats "saved" as an id param
+  @Get('saved')
+  getSaved(@Request() req): Promise<any[]> {
+    return this.topicsService.getSavedIdeas(req.user.userId);
+  }
+
   @Get('today')
   getToday(): Promise<any[]> {
     return this.topicsService.getTodaysPitches();
@@ -57,10 +63,5 @@ export class PitchesController {
   @Post(':id/save')
   save(@Param('id') pitchId: string, @Request() req): Promise<any> {
     return this.topicsService.savePitch(req.user.userId, pitchId);
-  }
-
-  @Get('saved')
-  getSaved(@Request() req): Promise<any[]> {
-    return this.topicsService.getSavedIdeas(req.user.userId);
   }
 }

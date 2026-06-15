@@ -16,18 +16,14 @@ export default function DashboardPage() {
   const navigate = useNavigate();
 
   const { data: trending, isLoading } = useQuery({
-    queryKey: ['trending', 6],
-    queryFn: () => topicsApi.getTrending(6),
+    queryKey: ['trending', 10],
+    queryFn: () => topicsApi.getTrending(10),
     refetchInterval: 1000 * 60 * 10,
   });
 
-  // Defensive — handle both array response and object with topics key
   const topicsArray = Array.isArray(trending)
     ? trending
     : (trending as any)?.topics || [];
-
-  const hotTopics = topicsArray.filter((t: any) => t.trendScore >= 70);
-  const otherTopics = topicsArray.filter((t: any) => t.trendScore < 70);
 
   return (
     <div className="page-container pt-4 space-y-6">
@@ -60,50 +56,25 @@ export default function DashboardPage() {
 
       {isLoading ? (
         <LoadingSpinner text="Fetching trends..." />
+      ) : topicsArray.length === 0 ? (
+        <EmptyState
+          icon="📡"
+          title="No trends yet"
+          subtitle="Topics are being collected. Check back in a few minutes!"
+        />
       ) : (
-        <>
-          {hotTopics.length > 0 && (
-            <section className="space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="text-lg">🚨</span>
-                <h3 className="font-bold text-navy">Hot Right Now</h3>
-                <span className="badge bg-coral/10 text-coral">{hotTopics.length}</span>
-              </div>
-              <div className="space-y-3">
-                {hotTopics.map((topic: any) => (
-                  <TopicCard
-                    key={topic._id}
-                    topic={topic}
-                    onClick={() => navigate(`/topics/${topic._id}`)}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {otherTopics.length > 0 && (
-            <section className="space-y-3">
-              <h3 className="font-bold text-navy">Also Trending</h3>
-              <div className="space-y-3">
-                {otherTopics.map((topic: any) => (
-                  <TopicCard
-                    key={topic._id}
-                    topic={topic}
-                    onClick={() => navigate(`/topics/${topic._id}`)}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {topicsArray.length === 0 && (
-            <EmptyState
-              icon="📡"
-              title="No trends yet"
-              subtitle="Topics are being collected. Check back in a few minutes!"
-            />
-          )}
-        </>
+        <section className="space-y-3">
+          <h3 className="font-bold text-navy">📰 Today's Topics</h3>
+          <div className="space-y-3">
+            {topicsArray.map((topic: any) => (
+              <TopicCard
+                key={topic._id}
+                topic={topic}
+                onClick={() => navigate(`/topics/${topic._id}`)}
+              />
+            ))}
+          </div>
+        </section>
       )}
     </div>
   );

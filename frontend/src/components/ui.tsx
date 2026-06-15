@@ -139,11 +139,49 @@ interface TopicCardProps {
     trendScore: number;
     source: string;
     image?: string;
+    status?: string;
   };
   onClick?: () => void;
 }
 
+// export function TopicCard({ topic, onClick }: TopicCardProps) {
+//   return (
+//     <div
+//       className="card active:scale-[0.98] transition-transform cursor-pointer"
+//       onClick={onClick}
+//     >
+//       <div className="flex gap-3">
+//         {topic.image && (
+//           <img
+//             src={topic.image}
+//             alt=""
+//             className="w-16 h-16 rounded-xl object-cover flex-shrink-0 bg-gray-100"
+//             onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+//           />
+//         )}
+//         <div className="flex-1 min-w-0 space-y-1.5">
+//           <div className="flex items-center gap-2 flex-wrap">
+//             <CategoryBadge category={topic.category} />
+//             {topic.trendScore >= 70 && (
+//               <span className="badge bg-red-50 text-red-600">🔥 Hot</span>
+//             )}
+//           </div>
+//           <h3 className="font-semibold text-gray-900 text-sm leading-snug line-clamp-2">
+//             {topic.title}
+//           </h3>
+//           <div className="flex items-center justify-between">
+//             <span className="text-xs text-gray-400">{topic.source}</span>
+//             <TrendScore score={topic.trendScore} />
+//           </div>
+//         </div>
+//       </div>
+//     </div>
+//   );
+// }
+
 export function TopicCard({ topic, onClick }: TopicCardProps) {
+  const isHot = topic.trendScore >= 45 || topic.status === 'hot';
+
   return (
     <div
       className="card active:scale-[0.98] transition-transform cursor-pointer"
@@ -161,7 +199,7 @@ export function TopicCard({ topic, onClick }: TopicCardProps) {
         <div className="flex-1 min-w-0 space-y-1.5">
           <div className="flex items-center gap-2 flex-wrap">
             <CategoryBadge category={topic.category} />
-            {topic.trendScore >= 70 && (
+            {isHot && (
               <span className="badge bg-red-50 text-red-600">🔥 Hot</span>
             )}
           </div>

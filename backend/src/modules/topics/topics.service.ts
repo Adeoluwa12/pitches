@@ -21,20 +21,42 @@ export class TopicsService {
     private readonly rssCollector: RssCollectorService,
   ) {}
 
+  // async getTrending(limit = 10): Promise<any[]> {
+  //   return this.topicModel
+  //     .find({ status: { $in: [TopicStatus.PROCESSED, TopicStatus.HOT] } })
+  //     .sort({ trendScore: -1, createdAt: -1 })
+  //     .limit(limit)
+  //     .lean();
+  // }
+
+  // async getAll(page = 1, limit = 20, category?: string): Promise<any> {
+  //   const filter = category ? { category } : {};
+  //   const [topics, total] = await Promise.all([
+  //     this.topicModel
+  //       .find(filter)
+  //       .sort({ createdAt: -1 })
+  //       .skip((page - 1) * limit)
+  //       .limit(limit)
+  //       .lean(),
+  //     this.topicModel.countDocuments(filter),
+  //   ]);
+  //   return { topics, total, page, limit };
+  // }
+
   async getTrending(limit = 10): Promise<any[]> {
     return this.topicModel
-      .find({ status: { $in: [TopicStatus.PROCESSED, TopicStatus.HOT] } })
+      .find({}) // return all, not just processed/hot
       .sort({ trendScore: -1, createdAt: -1 })
       .limit(limit)
       .lean();
   }
-
+  
   async getAll(page = 1, limit = 20, category?: string): Promise<any> {
     const filter = category ? { category } : {};
     const [topics, total] = await Promise.all([
       this.topicModel
         .find(filter)
-        .sort({ createdAt: -1 })
+        .sort({ trendScore: -1, createdAt: -1 }) // sort by score, not just date
         .skip((page - 1) * limit)
         .limit(limit)
         .lean(),
