@@ -6,12 +6,12 @@ import { PitchCard, CategoryBadge, LoadingSpinner, EmptyState } from '../compone
 export default function SavedIdeasPage() {
   const navigate = useNavigate();
 
-  const { data: savedData, isLoading } = useQuery({
+  const { data: savedData, isLoading, error } = useQuery({
     queryKey: ['saved-ideas'],
     queryFn: pitchesApi.getSaved,
   });
 
-  const saved = savedData || [];
+  const saved = Array.isArray(savedData) ? savedData : [];
 
   return (
     <div className="page-container pt-4 space-y-4">
@@ -24,6 +24,12 @@ export default function SavedIdeasPage() {
 
       {isLoading ? (
         <LoadingSpinner text="Loading saved ideas..." />
+      ) : error ? (
+        <EmptyState
+          icon="⚠️"
+          title="Couldn't load saved ideas"
+          subtitle="There was a problem fetching your saved pitches."
+        />
       ) : saved.length === 0 ? (
         <EmptyState
           icon="🔖"
@@ -34,20 +40,17 @@ export default function SavedIdeasPage() {
         <div className="space-y-4">
           {saved.map((item: any) => (
             <div key={item._id} className="space-y-2">
-              {/* Topic context */}
               {item.topic && (
                 <button
                   onClick={() => navigate(`/topics/${item.topic._id}`)}
-                  className="flex items-center gap-2 text-sm text-gray-500 hover:text-navy"
+                  className="flex items-center gap-2 text-sm text-gray-500 hover:text-navy w-full text-left"
                 >
                   <CategoryBadge category={item.topic.category} />
-                  <span className="line-clamp-1 flex-1 text-left">{item.topic.title}</span>
-                  <span className="text-xs">→</span>
+                  <span className="line-clamp-1 flex-1">{item.topic.title}</span>
+                  <span className="text-xs flex-shrink-0">→</span>
                 </button>
               )}
-              {item.pitch && (
-                <PitchCard pitch={item.pitch} saved />
-              )}
+              {item.pitch && <PitchCard pitch={item.pitch} saved />}
             </div>
           ))}
         </div>

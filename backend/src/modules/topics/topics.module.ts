@@ -4,7 +4,7 @@ import { Topic, TopicSchema } from './topic.schema';
 import { Pitch, PitchSchema } from './pitch.schema';
 import { SavedIdea, SavedIdeaSchema } from './saved-idea.schema';
 import { TopicsService } from './topics.service';
-import { TopicsController, PitchesController } from './topics.controller';
+import { TopicsController, PitchesController, SavedIdeasController } from './topics.controller';
 import { AiModule } from '../ai/ai.module';
 import { TrendsModule } from '../trends/trends.module';
 import { CollectorsModule } from '../collectors/collectors.module';
@@ -21,7 +21,7 @@ import { CollectorsModule } from '../collectors/collectors.module';
     CollectorsModule,
   ],
   providers: [TopicsService],
-  controllers: [TopicsController, PitchesController],
+  controllers: [TopicsController, PitchesController, SavedIdeasController],
   exports: [TopicsService],
 })
 export class TopicsModule {}

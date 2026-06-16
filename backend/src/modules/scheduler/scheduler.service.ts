@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
@@ -23,25 +23,37 @@ export class SchedulerService {
     private readonly config: ConfigService,
   ) {}
 
-  // 6:30 AM daily — morning briefing
+  // 6:30 AM Lagos time daily
   @Cron('30 6 * * *', { timeZone: 'Africa/Lagos' })
   async runMorningBrief() {
+    await this.executeMorningBrief();
+  }
+
+  // Every 10 minutes
+  @Cron('*/10 * * * *')
+  async monitorHotTopics() {
+    await this.executeHotTopicCheck();
+  }
+
+  async executeMorningBrief(): Promise<{
+    success: boolean;
+    usersNotified: number;
+    topicsProcessed: number;
+    error?: string;
+  }> {
     this.logger.log('⏰ Running morning briefing job...');
 
     try {
-      // 1. Collect fresh trends first
       await this.topicsService.collectAndProcessTrends();
 
-      // 2. Get top trending topics
       const trendingTopics = await this.topicsService.getTrending(8);
       if (trendingTopics.length === 0) {
         this.logger.warn('No trending topics for morning brief');
-        return;
+        return { success: false, usersNotified: 0, topicsProcessed: 0, error: 'No trending topics found' };
       }
 
-      // 3. Generate pitches for topics that don't have them
       const topicsWithPitches = await Promise.all(
-        trendingTopics.slice(0, 5).map(async (topic) => {
+        trendingTopics.slice(0, 5).map(async (topic: any) => {
           try {
             const pitches = await this.topicsService.generatePitchesForTopic(topic._id.toString());
             return { topic, pitches };
@@ -53,24 +65,27 @@ export class SchedulerService {
       );
 
       const validTopics = topicsWithPitches.filter((t) => t.pitches.length > 0);
-      if (validTopics.length === 0) return;
+      if (validTopics.length === 0) {
+        this.logger.warn('AI pitch generation failed for all topics — check OPENROUTER_API_KEY');
+        return { success: false, usersNotified: 0, topicsProcessed: 0, error: 'Pitch generation failed for all topics — check OPENROUTER_API_KEY in Render env vars' };
+      }
 
-      // 4. Get briefing intro from AI
-      const intro = await this.aiService.generateMorningBriefSummary(
-        validTopics.map((t) => ({
-          title: t.topic.title,
-          pitches: t.pitches.map((p) => ({
-            headline: p.headline,
-            angle: p.angle,
-            summary: p.summary,
-            whyNow: p.whyNow,
-            structure: p.structure,
-            targetAudience: p.targetAudience,
+      const intro = await this.aiService
+        .generateMorningBriefSummary(
+          validTopics.map((t) => ({
+            title: t.topic.title,
+            pitches: t.pitches.map((p: any) => ({
+              headline: p.headline,
+              angle: p.angle,
+              summary: p.summary,
+              whyNow: p.whyNow,
+              structure: p.structure,
+              targetAudience: p.targetAudience,
+            })),
           })),
-        })),
-      ).catch(() => "Here are today's top entertainment stories worth writing about.");
+        )
+        .catch(() => "Here are today's top entertainment stories worth writing about.");
 
-      // 5. Get all users
       const users = await this.userModel.find({}).lean();
       this.logger.log(`Sending morning brief to ${users.length} users`);
 
@@ -81,73 +96,83 @@ export class SchedulerService {
         year: 'numeric',
       });
 
-      // 6. Send to each user
+      let notified = 0;
+
       await Promise.allSettled(
         users.map(async (user) => {
           const preferredTopics = validTopics.filter((t) => {
-            const userCategories = user.preferences?.categories || [];
-            if (userCategories.length === 0) return true;
-            return userCategories.includes(t.topic.category);
+            const cats = user.preferences?.categories || [];
+            return cats.length === 0 || cats.includes(t.topic.category);
           });
 
           const topicsToSend = preferredTopics.length > 0 ? preferredTopics : validTopics;
 
-          // Create in-app notification
           await this.notificationsService.create({
             userId: user._id.toString(),
-            title: "☀️ Your Morning Entertainment Brief is Ready",
+            title: '☀️ Your Morning Entertainment Brief is Ready',
             message: `${topicsToSend.length} trending topics with article pitches — let's write!`,
             type: NotificationType.MORNING_BRIEF,
             metadata: { topicCount: topicsToSend.length },
           });
 
-          // Send email
-          await this.emailService.sendMorningBrief({
-            recipientName: user.name,
-            recipientEmail: user.email,
-            intro,
-            date: today,
-            topics: topicsToSend.map((t) => ({
-              title: t.topic.title,
-              category: t.topic.category,
-              trendScore: t.topic.trendScore,
-              topPitch: t.pitches[0]?.headline || '',
-              pitchAngle: t.pitches[0]?.angle || '',
-            })),
-          }).catch((err) => {
-            this.logger.warn(`Email failed for ${user.email}: ${err.message}`);
-          });
+          await this.emailService
+            .sendMorningBrief({
+              recipientName: user.name,
+              recipientEmail: user.email,
+              intro,
+              date: today,
+              topics: topicsToSend.map((t) => ({
+                title: t.topic.title,
+                category: t.topic.category,
+                trendScore: t.topic.trendScore,
+                topPitch: t.pitches[0]?.headline || '',
+                pitchAngle: t.pitches[0]?.angle || '',
+              })),
+            })
+            .catch((err) => {
+              this.logger.warn(`Email failed for ${user.email}: ${err.message}`);
+            });
+
+          notified++;
         }),
       );
 
-      this.logger.log('✅ Morning briefing complete');
+      this.logger.log(`✅ Morning briefing complete — notified ${notified} users`);
+      return { success: true, usersNotified: notified, topicsProcessed: validTopics.length };
     } catch (error) {
       this.logger.error(`Morning briefing failed: ${error.message}`, error.stack);
+      return { success: false, usersNotified: 0, topicsProcessed: 0, error: error.message };
     }
   }
 
-  // Every 10 minutes — hot topic monitor
-  @Cron('*/10 * * * *')
-  async monitorHotTopics() {
+  async executeHotTopicCheck(): Promise<{
+    hotFound: number;
+    notified: number;
+    error?: string;
+  }> {
     this.logger.debug('🔍 Checking for hot topics...');
 
     try {
-      const { collected, hot } = await this.topicsService.collectAndProcessTrends();
-      if (hot === 0) return;
+      await this.topicsService.collectAndProcessTrends();
 
       const hotTopics = await this.topicsService.getHotTopicsForNotification();
-      if (hotTopics.length === 0) return;
+      if (hotTopics.length === 0) {
+        this.logger.debug('No new hot topics to notify');
+        return { hotFound: 0, notified: 0 };
+      }
 
       this.logger.log(`🚨 Found ${hotTopics.length} hot topics, notifying users`);
-
       const users = await this.userModel.find({}).lean();
+      let notified = 0;
 
       for (const topic of hotTopics) {
-        // Generate pitches for hot topic
-        let pitches = [];
+        let pitches: { headline: string; angle: string }[] = [];
+
         try {
-          const generatedPitches = await this.topicsService.generatePitchesForTopic(topic._id.toString());
-          pitches = generatedPitches.slice(0, 3).map((p) => ({
+          const generated = await this.topicsService.generatePitchesForTopic(
+            topic._id.toString(),
+          );
+          pitches = generated.slice(0, 3).map((p: any) => ({
             headline: p.headline,
             angle: p.angle,
           }));
@@ -157,39 +182,42 @@ export class SchedulerService {
 
         await Promise.allSettled(
           users.map(async (user) => {
-            // In-app notification
             await this.notificationsService.create({
               userId: user._id.toString(),
               title: `🚨 HOT: ${topic.title.slice(0, 60)}`,
-              message: `Trend score ${topic.trendScore}/100 — this is worth writing about NOW`,
+              message: `Trend score ${topic.trendScore}/100 — write this NOW`,
               type: NotificationType.HOT_TOPIC,
               metadata: { topicId: topic._id, trendScore: topic.trendScore },
             });
 
-            // Email alert
             if (pitches.length > 0) {
-              await this.emailService.sendHotTopicAlert({
-                recipientName: user.name,
-                recipientEmail: user.email,
-                topicTitle: topic.title,
-                topicDescription: topic.description,
-                trendScore: topic.trendScore,
-                pitches,
-              }).catch((err) => {
-                this.logger.warn(`Hot topic email failed for ${user.email}: ${err.message}`);
-              });
+              await this.emailService
+                .sendHotTopicAlert({
+                  recipientName: user.name,
+                  recipientEmail: user.email,
+                  topicTitle: topic.title,
+                  topicDescription: topic.description,
+                  trendScore: topic.trendScore,
+                  pitches,
+                })
+                .catch((err) => {
+                  this.logger.warn(`Hot topic email failed for ${user.email}: ${err.message}`);
+                });
             }
+
+            notified++;
           }),
         );
       }
 
-      // Mark as notified
       await this.topicsService.markNotificationSent(
         hotTopics.map((t) => t._id.toString()),
       );
 
+      return { hotFound: hotTopics.length, notified };
     } catch (error) {
       this.logger.error(`Hot topic monitoring failed: ${error.message}`);
+      return { hotFound: 0, notified: 0, error: error.message };
     }
   }
 }
