@@ -5,9 +5,11 @@ import {
   Param,
   Query,
   Request,
+  Body,
   UseGuards,
   ParseIntPipe,
   DefaultValuePipe,
+  BadRequestException,
 } from '@nestjs/common';
 import { TopicsService } from './topics.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -50,7 +52,11 @@ export class PitchesController {
   }
 
   @Post('generate')
-  generate(@Query('topicId') topicId: string): Promise<any[]> {
+  async generate(
+    @Query('topicId') topicId: string,
+    @Body() _body: any,
+  ): Promise<any[]> {
+    if (!topicId) throw new BadRequestException('topicId query param is required');
     return this.topicsService.generatePitchesForTopic(topicId);
   }
 
@@ -60,7 +66,6 @@ export class PitchesController {
   }
 }
 
-// Completely separate controller — /saved-ideas — no :id conflict ever
 @Controller('saved-ideas')
 @UseGuards(JwtAuthGuard)
 export class SavedIdeasController {

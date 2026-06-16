@@ -46,14 +46,29 @@ const RSS_SOURCES = [
     category: TopicCategory.POP_CULTURE,
   },
   {
-    name: 'Thedistin',
-    url: 'https://www.thedistin.com/feed/',
+    name: 'Punch Entertainment',
+    url: 'https://punchng.com/topics/entertainment/feed/',
     category: TopicCategory.CELEBRITY,
   },
   {
-    name: 'SDK Blog',
-    url: 'https://www.sdk.blog/feed/',
+    name: 'The Cable Lifestyle',
+    url: 'https://www.thecable.ng/category/lifestyle/feed',
+    category: TopicCategory.POP_CULTURE,
+  },
+  {
+    name: 'Legit NG Entertainment',
+    url: 'https://www.legit.ng/entertainment/rss/',
     category: TopicCategory.CELEBRITY,
+  },
+  {
+    name: 'Zikoko',
+    url: 'https://zikoko.com/feed/',
+    category: TopicCategory.INTERNET_TRENDS,
+  },
+  {
+    name: 'Nollywood Reporter',
+    url: 'https://nollywoodreporter.com/feed/',
+    category: TopicCategory.NOLLYWOOD,
   },
 ];
 
