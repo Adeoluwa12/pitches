@@ -51,17 +51,21 @@ export class PitchesController {
     return this.topicsService.getTodaysPitches();
   }
 
-  @Post('generate')
+  // Changed to GET — no body needed, only a query param
+  @Get('generate')
   async generate(
     @Query('topicId') topicId: string,
-    @Body() _body: any,
   ): Promise<any[]> {
     if (!topicId) throw new BadRequestException('topicId query param is required');
     return this.topicsService.generatePitchesForTopic(topicId);
   }
 
   @Post(':id/save')
-  save(@Param('id') pitchId: string, @Request() req): Promise<any> {
+  async save(
+    @Param('id') pitchId: string,
+    @Request() req,
+    @Body() _body: any,
+  ): Promise<any> {
     return this.topicsService.savePitch(req.user.userId, pitchId);
   }
 }

@@ -19,6 +19,11 @@ import { CollectorsModule } from './modules/collectors/collectors.module';
       imports: [ConfigModule],
       useFactory: (config: ConfigService) => ({
         uri: config.get<string>('MONGODB_URI'),
+        serverSelectionTimeoutMS: 10000,
+        socketTimeoutMS: 45000,
+        heartbeatFrequencyMS: 10000,
+        maxPoolSize: 10,
+        retryWrites: true,
       }),
       inject: [ConfigService],
     }),

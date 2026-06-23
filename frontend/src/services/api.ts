@@ -48,18 +48,11 @@ export const topicsApi = {
   getById: (id: string) => api.get(`/topics/${id}`).then((r) => r.data),
 };
 
-// export const pitchesApi = {
-//   getToday: () => api.get('/pitches/today').then((r) => r.data),
-//   generate: (topicId: string) =>
-//     api.post('/pitches/generate', null, { params: { topicId } }).then((r) => r.data),
-//   save: (pitchId: string) => api.post(`/pitches/${pitchId}/save`).then((r) => r.data),
-//   getSaved: () => api.get('/saved-ideas').then((r) => r.data),  // new endpoint
-// };
-
 export const pitchesApi = {
   getToday: () => api.get('/pitches/today').then((r) => r.data),
+  // Changed to GET — no body, no validation issues
   generate: (topicId: string) =>
-    api.post(`/pitches/generate`, undefined, { params: { topicId } }).then((r) => r.data),
+    api.get('/pitches/generate', { params: { topicId } }).then((r) => r.data),
   save: (pitchId: string) => api.post(`/pitches/${pitchId}/save`).then((r) => r.data),
   getSaved: () => api.get('/saved-ideas').then((r) => r.data),
 };

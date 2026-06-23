@@ -29,6 +29,12 @@ export class DebugController {
     return { message: 'Hot topic check complete', ...result };
   }
 
+  @Post('prune')
+  async prune() {
+    const result = await this.topicsService.pruneStaleTopics();
+    return { message: 'Prune complete', ...result };
+  }
+
   @Get('trending')
   async trending() {
     const topics = await this.topicsService.getTrending(20);
@@ -39,7 +45,6 @@ export class DebugController {
         score: t.trendScore,
         status: t.status,
         category: t.category,
-        breakdown: t.scoreBreakdown,
       })),
     };
   }

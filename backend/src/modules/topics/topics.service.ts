@@ -21,42 +21,20 @@ export class TopicsService {
     private readonly rssCollector: RssCollectorService,
   ) {}
 
-  // async getTrending(limit = 10): Promise<any[]> {
-  //   return this.topicModel
-  //     .find({ status: { $in: [TopicStatus.PROCESSED, TopicStatus.HOT] } })
-  //     .sort({ trendScore: -1, createdAt: -1 })
-  //     .limit(limit)
-  //     .lean();
-  // }
-
-  // async getAll(page = 1, limit = 20, category?: string): Promise<any> {
-  //   const filter = category ? { category } : {};
-  //   const [topics, total] = await Promise.all([
-  //     this.topicModel
-  //       .find(filter)
-  //       .sort({ createdAt: -1 })
-  //       .skip((page - 1) * limit)
-  //       .limit(limit)
-  //       .lean(),
-  //     this.topicModel.countDocuments(filter),
-  //   ]);
-  //   return { topics, total, page, limit };
-  // }
-
   async getTrending(limit = 10): Promise<any[]> {
     return this.topicModel
-      .find({}) // return all, not just processed/hot
+      .find({})
       .sort({ trendScore: -1, createdAt: -1 })
       .limit(limit)
       .lean();
   }
-  
+
   async getAll(page = 1, limit = 20, category?: string): Promise<any> {
     const filter = category ? { category } : {};
     const [topics, total] = await Promise.all([
       this.topicModel
         .find(filter)
-        .sort({ trendScore: -1, createdAt: -1 }) // sort by score, not just date
+        .sort({ trendScore: -1, createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .lean(),
@@ -68,7 +46,9 @@ export class TopicsService {
   async getById(id: string): Promise<any> {
     const topic = await this.topicModel.findById(id).lean();
     if (!topic) throw new NotFoundException('Topic not found');
-    const pitches = await this.pitchModel.find({ topicId: new Types.ObjectId(id) }).lean();
+    const pitches = await this.pitchModel
+      .find({ topicId: new Types.ObjectId(id) })
+      .lean();
     return { ...topic, pitches };
   }
 
@@ -76,15 +56,36 @@ export class TopicsService {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
-    const topics = await this.topicModel
-      .find({ createdAt: { $gte: startOfDay }, status: TopicStatus.PROCESSED })
+    let topics = await this.topicModel
+      .find({
+        createdAt: { $gte: startOfDay },
+        status: { $in: ['processed', 'hot'] },
+      })
       .sort({ trendScore: -1 })
       .limit(10)
       .lean();
 
+    if (topics.length === 0) {
+      topics = await this.topicModel
+        .find({ status: { $in: ['processed', 'hot'] } })
+        .sort({ trendScore: -1, createdAt: -1 })
+        .limit(10)
+        .lean();
+    }
+
+    if (topics.length === 0) {
+      topics = await this.topicModel
+        .find({})
+        .sort({ trendScore: -1, createdAt: -1 })
+        .limit(10)
+        .lean();
+    }
+
     const results = await Promise.all(
       topics.map(async (topic) => {
-        const pitches = await this.pitchModel.find({ topicId: topic._id }).lean();
+        const pitches = await this.pitchModel
+          .find({ topicId: topic._id })
+          .lean();
         return { ...topic, pitches };
       }),
     );
@@ -96,12 +97,10 @@ export class TopicsService {
     const topic = await this.topicModel.findById(topicId);
     if (!topic) throw new NotFoundException('Topic not found');
 
-    const existing = await this.pitchModel.find({ topicId: new Types.ObjectId(topicId) });
-    if (existing.length > 0) {
-      this.logger.debug(`Pitches already exist for topic ${topicId}, regenerating`);
-    }
-
-    const pitchResults = await this.aiService.generatePitches(topic.title, topic.description);
+    const pitchResults = await this.aiService.generatePitches(
+      topic.title,
+      topic.description,
+    );
 
     const savedPitches = await Promise.all(
       pitchResults.map((p) =>
@@ -140,7 +139,6 @@ export class TopicsService {
     });
 
     await this.pitchModel.findByIdAndUpdate(pitchId, { $inc: { saveCount: 1 } });
-
     return { message: 'Pitch saved' };
   }
 
@@ -214,7 +212,7 @@ export class TopicsService {
       .find({
         status: TopicStatus.HOT,
         notificationSent: false,
-        trendScore: { $gte: 70 },
+        trendScore: { $gte: 45 },
       })
       .sort({ trendScore: -1 })
       .limit(3)
@@ -226,5 +224,25 @@ export class TopicsService {
       { _id: { $in: topicIds.map((id) => new Types.ObjectId(id)) } },
       { notificationSent: true },
     );
+  }
+
+  // Delete topics older than 48 hours + their pitches
+  async pruneStaleTopics(): Promise<{ deleted: number }> {
+    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
+
+    const stale = await this.topicModel
+      .find({ createdAt: { $lt: cutoff } })
+      .select('_id')
+      .lean();
+
+    if (stale.length === 0) return { deleted: 0 };
+
+    const staleIds = stale.map((t) => t._id);
+
+    await this.pitchModel.deleteMany({ topicId: { $in: staleIds } });
+    await this.topicModel.deleteMany({ _id: { $in: staleIds } });
+
+    this.logger.log(`🗑️ Pruned ${stale.length} stale topics and their pitches`);
+    return { deleted: stale.length };
   }
 }

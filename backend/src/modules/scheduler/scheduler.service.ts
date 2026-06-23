@@ -23,16 +23,23 @@ export class SchedulerService {
     private readonly config: ConfigService,
   ) {}
 
-  // 6:30 AM Lagos time daily
+  // 6:30 AM Lagos time
   @Cron('30 6 * * *', { timeZone: 'Africa/Lagos' })
   async runMorningBrief() {
     await this.executeMorningBrief();
   }
 
-  // Every 10 minutes
-  @Cron('*/10 * * * *')
+  // Every 5 minutes — faster than before
+  @Cron('*/5 * * * *')
   async monitorHotTopics() {
     await this.executeHotTopicCheck();
+  }
+
+  // Every 6 hours — clean up stale topics
+  @Cron('0 */6 * * *')
+  async pruneOldTopics() {
+    const result = await this.topicsService.pruneStaleTopics();
+    this.logger.log(`Prune job complete: ${result.deleted} topics removed`);
   }
 
   async executeMorningBrief(): Promise<{
@@ -48,8 +55,7 @@ export class SchedulerService {
 
       const trendingTopics = await this.topicsService.getTrending(8);
       if (trendingTopics.length === 0) {
-        this.logger.warn('No trending topics for morning brief');
-        return { success: false, usersNotified: 0, topicsProcessed: 0, error: 'No trending topics found' };
+        return { success: false, usersNotified: 0, topicsProcessed: 0, error: 'No trending topics' };
       }
 
       const topicsWithPitches = await Promise.all(
@@ -58,7 +64,7 @@ export class SchedulerService {
             const pitches = await this.topicsService.generatePitchesForTopic(topic._id.toString());
             return { topic, pitches };
           } catch (error) {
-            this.logger.warn(`Pitch generation failed for topic ${topic._id}: ${error.message}`);
+            this.logger.warn(`Pitch gen failed for ${topic._id}: ${error.message}`);
             return { topic, pitches: [] };
           }
         }),
@@ -66,8 +72,12 @@ export class SchedulerService {
 
       const validTopics = topicsWithPitches.filter((t) => t.pitches.length > 0);
       if (validTopics.length === 0) {
-        this.logger.warn('AI pitch generation failed for all topics — check OPENROUTER_API_KEY');
-        return { success: false, usersNotified: 0, topicsProcessed: 0, error: 'Pitch generation failed for all topics — check OPENROUTER_API_KEY in Render env vars' };
+        return {
+          success: false,
+          usersNotified: 0,
+          topicsProcessed: 0,
+          error: 'Pitch generation failed — check OPENROUTER_API_KEY',
+        };
       }
 
       const intro = await this.aiService
@@ -87,24 +97,17 @@ export class SchedulerService {
         .catch(() => "Here are today's top entertainment stories worth writing about.");
 
       const users = await this.userModel.find({}).lean();
-      this.logger.log(`Sending morning brief to ${users.length} users`);
-
       const today = new Date().toLocaleDateString('en-GB', {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
+        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
       });
 
       let notified = 0;
-
       await Promise.allSettled(
         users.map(async (user) => {
           const preferredTopics = validTopics.filter((t) => {
             const cats = user.preferences?.categories || [];
             return cats.length === 0 || cats.includes(t.topic.category);
           });
-
           const topicsToSend = preferredTopics.length > 0 ? preferredTopics : validTopics;
 
           await this.notificationsService.create({
@@ -115,53 +118,42 @@ export class SchedulerService {
             metadata: { topicCount: topicsToSend.length },
           });
 
-          await this.emailService
-            .sendMorningBrief({
-              recipientName: user.name,
-              recipientEmail: user.email,
-              intro,
-              date: today,
-              topics: topicsToSend.map((t) => ({
-                title: t.topic.title,
-                category: t.topic.category,
-                trendScore: t.topic.trendScore,
-                topPitch: t.pitches[0]?.headline || '',
-                pitchAngle: t.pitches[0]?.angle || '',
-              })),
-            })
-            .catch((err) => {
-              this.logger.warn(`Email failed for ${user.email}: ${err.message}`);
-            });
+          await this.emailService.sendMorningBrief({
+            recipientName: user.name,
+            recipientEmail: user.email,
+            intro,
+            date: today,
+            topics: topicsToSend.map((t) => ({
+              title: t.topic.title,
+              category: t.topic.category,
+              trendScore: t.topic.trendScore,
+              topPitch: t.pitches[0]?.headline || '',
+              pitchAngle: t.pitches[0]?.angle || '',
+            })),
+          }).catch((err) => this.logger.warn(`Email failed for ${user.email}: ${err.message}`));
 
           notified++;
         }),
       );
 
-      this.logger.log(`✅ Morning briefing complete — notified ${notified} users`);
+      this.logger.log(`✅ Morning brief sent to ${notified} users`);
       return { success: true, usersNotified: notified, topicsProcessed: validTopics.length };
     } catch (error) {
-      this.logger.error(`Morning briefing failed: ${error.message}`, error.stack);
+      this.logger.error(`Morning brief failed: ${error.message}`, error.stack);
       return { success: false, usersNotified: 0, topicsProcessed: 0, error: error.message };
     }
   }
 
-  async executeHotTopicCheck(): Promise<{
-    hotFound: number;
-    notified: number;
-    error?: string;
-  }> {
+  async executeHotTopicCheck(): Promise<{ hotFound: number; notified: number; error?: string }> {
     this.logger.debug('🔍 Checking for hot topics...');
 
     try {
       await this.topicsService.collectAndProcessTrends();
 
       const hotTopics = await this.topicsService.getHotTopicsForNotification();
-      if (hotTopics.length === 0) {
-        this.logger.debug('No new hot topics to notify');
-        return { hotFound: 0, notified: 0 };
-      }
+      if (hotTopics.length === 0) return { hotFound: 0, notified: 0 };
 
-      this.logger.log(`🚨 Found ${hotTopics.length} hot topics, notifying users`);
+      this.logger.log(`🚨 ${hotTopics.length} hot topics found`);
       const users = await this.userModel.find({}).lean();
       let notified = 0;
 
@@ -169,15 +161,13 @@ export class SchedulerService {
         let pitches: { headline: string; angle: string }[] = [];
 
         try {
-          const generated = await this.topicsService.generatePitchesForTopic(
-            topic._id.toString(),
-          );
+          const generated = await this.topicsService.generatePitchesForTopic(topic._id.toString());
           pitches = generated.slice(0, 3).map((p: any) => ({
             headline: p.headline,
             angle: p.angle,
           }));
         } catch (error) {
-          this.logger.warn(`Pitch generation failed for hot topic: ${error.message}`);
+          this.logger.warn(`Pitch gen failed for hot topic: ${error.message}`);
         }
 
         await Promise.allSettled(
@@ -191,18 +181,14 @@ export class SchedulerService {
             });
 
             if (pitches.length > 0) {
-              await this.emailService
-                .sendHotTopicAlert({
-                  recipientName: user.name,
-                  recipientEmail: user.email,
-                  topicTitle: topic.title,
-                  topicDescription: topic.description,
-                  trendScore: topic.trendScore,
-                  pitches,
-                })
-                .catch((err) => {
-                  this.logger.warn(`Hot topic email failed for ${user.email}: ${err.message}`);
-                });
+              await this.emailService.sendHotTopicAlert({
+                recipientName: user.name,
+                recipientEmail: user.email,
+                topicTitle: topic.title,
+                topicDescription: topic.description,
+                trendScore: topic.trendScore,
+                pitches,
+              }).catch((err) => this.logger.warn(`Hot topic email failed for ${user.email}: ${err.message}`));
             }
 
             notified++;
@@ -210,13 +196,10 @@ export class SchedulerService {
         );
       }
 
-      await this.topicsService.markNotificationSent(
-        hotTopics.map((t) => t._id.toString()),
-      );
-
+      await this.topicsService.markNotificationSent(hotTopics.map((t) => t._id.toString()));
       return { hotFound: hotTopics.length, notified };
     } catch (error) {
-      this.logger.error(`Hot topic monitoring failed: ${error.message}`);
+      this.logger.error(`Hot topic check failed: ${error.message}`);
       return { hotFound: 0, notified: 0, error: error.message };
     }
   }

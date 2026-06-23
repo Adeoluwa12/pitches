@@ -12,7 +12,7 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
-      forbidNonWhitelisted: false, // was true — was rejecting POST with no body/DTO
+      forbidNonWhitelisted: false,
       transform: true,
     }),
   );
